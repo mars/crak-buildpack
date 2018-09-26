@@ -46,7 +46,32 @@ else
   export NODE_ENV="${INHERITED_NODE_ENV}"
 fi
 
-echo "=====> Downloading Buildpack: $url"
+echo "-----> Configure Kong runtime"
+
+mkdir -p "${BUILD_DIR}/bin/"
+  cp $BP_DIR/bin/app/heroku-* "${BUILD_DIR}/bin/"
+
+mkdir -p "${BUILD_DIR}/config/"
+
+kong_conf="config/kong.conf.etlua"
+if [ -f "${BUILD_DIR}/${kong_conf}" ]
+  then
+  echo "Using custom '${kong_conf}'" | indent
+else
+  echo "Writing default '${kong_conf}'" | indent
+  cp "${BP_DIR}/${kong_conf}" "${BUILD_DIR}/${kong_conf}" | indent
+fi
+
+nginx_conf="config/nginx.template"
+if [ -f "${BUILD_DIR}/${nginx_conf}" ]
+  then
+  echo "Using custom '${nginx_conf}'" | indent
+else
+  echo "Writing default '${nginx_conf}'" | indent
+  cp "${BP_DIR}/${nginx_conf}" "${BUILD_DIR}/${nginx_conf}" | indent
+fi
+
+echo '=====> Compiling `.buildpacks` with heroku-buildpack-multi'
 
 if [[ "$url" =~ \.tgz$ ]] || [[ "$url" =~ \.tgz\? ]]; then
   mkdir -p "$dir"
@@ -65,13 +90,12 @@ chmod -f +x $dir/bin/{detect,compile,release}
 framework=$($dir/bin/detect $1)
 
 if [ $? == 0 ]; then
-  echo "=====> Detected Framework: $framework"
   $dir/bin/compile $BUILD_DIR $CACHE_DIR $ENV_DIR
 
   if [ $? != 0 ]; then
     exit 1
   fi
 else
-  echo "create-react-app `.buildpacks` not defined. Exiting."
+  echo "crak-buildpack `.buildpacks` not defined. Exiting."
   exit 1
 fi

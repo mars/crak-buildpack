@@ -1,7 +1,11 @@
-Heroku Buildpack for create-react-app
-=====================================
+Heroku Buildpack for create-react-app with Kong gateway
+=======================================================
 
-Deploy React.js web apps generated with [create-react-app](https://github.com/facebook/create-react-app). Automates deployment with the built-in bundler and serves it up via [Nginx](http://nginx.org/en/). See the [introductory blog post](https://blog.heroku.com/deploying-react-with-zero-configuration) and entry in [Heroku elements](https://elements.heroku.com/buildpacks/mars/create-react-app-buildpack).
+🔬👨‍🔬 **The project is currently experimental, unstable.**
+
+⭐️ A new version of [create-react-app-buildpack](https://github.com/mars/create-react-app-buildpack) that replaces the basic Nginx server with a [Kong gateway](https://konghq.com/) to support sophisticated access control, backend proxies, and more.
+
+Deploy React.js web apps generated with [create-react-app](https://github.com/facebook/create-react-app). Automates deployment with the built-in bundler and serves it up via [Kong](https://konghq.com/), which is fundamentally the [Nginx](http://nginx.org/en/) web server.
 
 * 🚦 [Purpose](#user-content-purpose)
 * ⚠️ [Requirements](#user-content-requires)
@@ -17,7 +21,6 @@ Deploy React.js web apps generated with [create-react-app](https://github.com/fa
 * 👓 [Customization](#user-content-customization)
   * [Procfile](#user-content-procfile)
   * [Web server](#user-content-web-server)
-    * [Routing clean URLs](#user-content-routing-clean-urls)
     * [HTTPS-only](#user-content-https-only)
     * [Proxy](#user-content-proxy)
   * [Environment variables](#user-content-environment-variables)
@@ -29,6 +32,7 @@ Deploy React.js web apps generated with [create-react-app](https://github.com/fa
         * [Custom bundle location](#user-content-custom-bundle-location)
     * [using an Add-on's config](#user-content-add-on-config-vars)
   * [npm Private Packages](#user-content-npm-private-packages)
+  * [Kong Admin API](#user-content-kong-admin-api)
 * 🕵️ [Troubleshooting](#user-content-troubleshooting)
 * 📍 [Version compatibility](#user-content-version-compatibility)
 * 🏙 [Architecture](#user-content-architecture-)
@@ -38,7 +42,7 @@ Deploy React.js web apps generated with [create-react-app](https://github.com/fa
 Purpose
 -------
 
-**This buildpack deploys a React UI as a static web site.** The [Nginx](http://nginx.org/en/) web server provides optimum performance and security for the runtime. See [Architecture](#user-content-architecture-) for details.
+**This buildpack deploys a React UI as a static web site.** [Kong](https://konghq.com/) serves the high-performance static site and provides dynamic proxy/gateway capabilities. See [Architecture](#user-content-architecture-) for details.
 
 If your goal is to combine React UI + API (Node, Ruby, Python…) into a *single app*, then this buildpack is not the answer. The simplest combined solution is all javascript:
 
@@ -66,7 +70,8 @@ Ensure [requirements](#user-content-requires) are met, then execute the followin
 npx create-react-app $APP_NAME
 cd $APP_NAME
 git init
-heroku create $APP_NAME --buildpack mars/create-react-app
+heroku create $APP_NAME --buildpack mars/crak
+heroku addons:create heroku-postgresql:hobby-dev
 git add .
 git commit -m "Start with create-react-app"
 git push heroku master
@@ -106,7 +111,7 @@ At this point, this new repo is local, only on your computer. Eventually, you ma
 ✏️ *Replace `$APP_NAME` with the name for your unique app.*
 
 ```bash
-heroku create $APP_NAME --buildpack mars/create-react-app
+heroku create $APP_NAME --buildpack mars/crak
 ```
 
 This command:
@@ -114,6 +119,14 @@ This command:
 * sets the [app name](https://devcenter.heroku.com/articles/creating-apps#creating-a-named-app) & its default URL `https://$APP_NAME.herokuapp.com`
 * sets the app to use this [buildpack](https://devcenter.heroku.com/articles/buildpacks)
 * configures the [`heroku` git remote](https://devcenter.heroku.com/articles/git#creating-a-heroku-remote) in the local repo, so `git push heroku master` will push to this new Heroku app.
+
+### Create the database for Kong
+
+The web server is a [Kong gateway](https://konghq.com/) that uses [Heroku Postgre](https://www.heroku.com/postgres) to store configuration of services, route, and plugins.
+
+```bash
+heroku addons:create heroku-postgresql:hobby-dev
+```
 
 ### Commit & deploy ♻️
 
@@ -165,7 +178,7 @@ Heroku CI uses [`app.json`](https://devcenter.heroku.com/articles/app-json-schem
 {
   "buildpacks": [
     {
-      "url": "mars/create-react-app"
+      "url": "mars/crak"
     }
   ]
 }
@@ -176,116 +189,89 @@ Customization
 
 ### Procfile
 
-Heroku apps may declare what processes are launched for a successful deployment by way of the [`Procfile`](https://devcenter.heroku.com/articles/procfile). This buildpack's default process comes from [`heroku/static` buildpack](https://github.com/heroku/heroku-buildpack-static). (See: 🏙 [Architecture](#user-content-architecture-)). The implicit `Procfile` to start the static web server is:
+Heroku apps may declare what processes are launched for a successful deployment by way of the [`Procfile`](https://devcenter.heroku.com/articles/procfile). This buildpack's default process comes from [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong). (See: 🏙 [Architecture](#user-content-architecture-)). The implicit `Procfile` to start the static web server is:
 
 ```
-web: bin/boot
+web: bin/heroku-buildpack-kong-web
 ```
 
-To customize an app's processes, commit a `Procfile` and deploy. Include `web: bin/boot` to launch the default web process, or you may replace the default web process. Additional [process types](https://devcenter.heroku.com/articles/procfile#declaring-process-types) may be added to run any number of dynos with whatever arbitrary commands you want, and scale each independently.
+To customize an app's processes, commit a `Procfile` and deploy. Include `web: bin/heroku-buildpack-kong-web` to launch the default web process, or you may replace the default web process. Additional [process types](https://devcenter.heroku.com/articles/procfile#declaring-process-types) may be added to run any number of dynos with whatever arbitrary commands you want, and scale each independently.
 
 🚦 *If replacing the default web process, please check this buildpack's [Purpose](#user-content-purpose) to avoid misusing this buildpack (such as running a Node server) which can lead to confusing deployment issues.*
 
 ### Web server
 
-The web server may be [configured via the static buildpack](https://github.com/heroku/heroku-buildpack-static#configuration).
+The web server may be [configured via Kong's nginx template](config/nginx.template). Simply copy the template file from this buildpack into your own app as `config/nginx.template`, and commit your own edits to the file.
 
-The config file `static.json` should be committed at the root of the repo. It will not be recognized, if this file in a sub-directory
-
-The default `static.json`, if it does not exist in the repo, is:
-
-```json
-{ "root": "build/" }
-```
+👓 See [Nginx HTTP core docs](https://nginx.org/en/docs/http/ngx_http_core_module.html).
 
 ### Changing the root
 
-If a different web server `"root"` is specified, such as with a highly customized, ejected create-react-app project, then the new bundle location may need to be [set to enable runtime environment variables](#user-content-custom-bundle-location).
+If a different web server `"root"` is required, such as with a highly customized, ejected create-react-app project, then:
+
+* `location /`'s' `root` must be set in [`config/nginx.template`](config/nginx.template)
+* the new bundle location may need to be [set to enable runtime environment variables](#user-content-custom-bundle-location).
 
 ### Routing clean URLs
 
-[React Router](https://github.com/ReactTraining/react-router) (not included) may easily use hash-based URLs like `https://example.com/index.html#/users/me/edit`. This is nice & easy when getting started with local development, but for a public app you probably want real URLs like `https://example.com/users/me/edit`.
-
-Create a `static.json` file at the root of the repo to configure the web server for clean [`browserHistory` with React Router v3](https://github.com/ReactTraining/react-router/blob/v3/docs/guides/Histories.md#browserhistory) & [`BrowserRouter` with v4](https://reacttraining.com/react-router/web/api/BrowserRouter):
-
-```json
-{
-  "root": "build/",
-  "routes": {
-    "/**": "index.html"
-  }
-}
-```
-
-👓 See [custom routing w/ the static buildpack](https://github.com/heroku/heroku-buildpack-static#custom-routes).
+*The default behavior now routes all unmatched requests to the React app for client-side routing.*
 
 ### HTTPS-only
 
-Enforce secure connections by automatically redirecting insecure requests to **https://**, in `static.json`:
-
-```json
-{
-  "root": "build/",
-  "https_only": true
-}
-```
-
-Prevent downgrade attacks with [HTTP strict transport security](https://developer.mozilla.org/en-US/docs/Web/Security/HTTP_strict_transport_security). Add HSTS `"headers"` to `static.json`:
-
-```json
-{
-  "root": "build/",
-  "https_only": true,
-  "headers": {
-    "/**": {
-      "Strict-Transport-Security": "max-age=7776000"
-    }
-  }
-}
-```
-
-* `max-age` is the number of seconds to enforce HTTPS since the last connection; the example is 90-days
+*TODO Define HTTPS-only with Nginx*
 
 ### Proxy
 
 Proxy XHR requests from the React UI in the browser to API backends. Use to prevent same-origin errors when [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS) is not supported on the backend.
 
-#### Proxy URL prefix
+#### Proxy path prefix
 
-To make calls through the proxy, use relative URL's in the React app which will be proxied to the configured target URL. For the example URL prefix of `/api/`, here's how the proxy would rewrite the requests:
+To make calls through the proxy, use relative URL's in the React app which will be proxied to the configured target URL.
+
+Using the Kong gateway included in this buildpack, there are two level of prefixing. In `/api/service/`:
+
+  * `/api/` is Kong's prefix
+  * `/api/` + `service/` is the complete backend-specific prefix
+
+Here's how the proxy might rewrite a few requests:
 
 ```
-/api/search-items
-  → https://backend.example.com/search-items
+/api/search/results
+  → https://search.example.com/results
   
-/api/users/me
-  → https://backend.example.com/users/me
+/api/accounts/users/me
+  → https://accounts.example.com/users/me
 ```
-
-You may choose any prefix and may have multiple proxies with different prefixes.
 
 #### Proxy for deployment
 
-The [`heroku/static` buildpack](https://github.com/heroku/heroku-buildpack-static) (see: 🏙 [Architecture](#user-content-architecture-))  provides [Proxy Backends configuration](https://github.com/heroku/heroku-buildpack-static/blob/master/README.md#proxy-backends) to utilize  Nginx for high-performance proxies in production.
+The [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong) (see: 🏙 [Architecture](#user-content-architecture-)) provides [dynamic routing & plugin configuration](https://docs.konghq.com/0.14.x/admin-api/) to utilize Nginx for high-performance proxies in production.
 
-Add `"proxies"` to `static.json`:
-
-```json
-{
-  "root": "build/",
-  "proxies": {
-    "/api/": {
-      "origin": "${API_URL}"
-    }
-  }
-}
-```
-
-Then, point the React UI app to a specific backend API:
+Define proxy config with Kong using its [Admin API](#user-content-kong-admin-api) to create a service & route:
 
 ```bash
-heroku config:set API_URL="https://backend.example.com"
+
+```bash
+curl http://localhost:8001/services/ -i -X POST \
+  --data 'name=sushi' \
+  --data 'protocol=https' \
+  --data 'port=443' \
+  --data 'host=sushi.herokuapp.com'
+# Note the Service ID returned in previous response, use it in place of `$SERVICE_ID`.
+curl http://localhost:8001/routes/ -i -X POST \
+  --data 'paths[]=/api/sushi' \
+  --data 'protocols[]=https' \
+  --data "service.id=$SERVICE_ID"
 ```
+
+List existing services & routes:
+
+```bash
+curl http://localhost:8001/services/
+curl http://localhost:8001/routes/
+```
+
+👓 See: [Kong Admin API docs](https://docs.konghq.com/0.14.x/admin-api/)
 
 #### Proxy for local development
 
@@ -296,10 +282,10 @@ Add `"proxy"` to `package.json`:
 ```json
 {
   "proxy": {
-    "/api": {
+    "/api/sushi": {
       "target": "http://localhost:8000",
       "pathRewrite": {
-        "^/api": "/"
+        "^/api/sushi": "/"
       }
     }
   }
@@ -461,6 +447,83 @@ Private modules are supported during build.
     heroku config:set NPM_TOKEN=xxxxx
     ```
 
+Kong Admin API
+--------------
+Use Kong CLI and the Admin API in a [one-off dyno](https://devcenter.heroku.com/articles/one-off-dynos):
+
+### Admin console
+✏️ *Replace `$APP_NAME` with the Heroku app name.*
+
+```bash
+heroku run bash --app $APP_NAME
+
+# Run Kong in the background of the one-off dyno:
+~ $ bin/heroku-buildpack-background-start
+
+# Then, use `curl` to issue Admin API commands:
+# (Note: the `$KONG_ADMIN_LISTEN` variable is already defined)
+~ $ curl http://$KONG_ADMIN_LISTEN
+
+# Example CLI commands:
+# (Note: some commands require the config file and others the prefix)
+# (Note: the `$KONG_CONF` variable is already defined)
+~ $ kong migrations list -c $KONG_CONF
+~ $ kong health -p /app/kong-runtime
+```
+
+### Expose the Admin API
+Kong's Admin API has no built-in authentication. Its exposure must be limited to a restricted, private network. For Kong on Heroku, the Admin API listens privately on `localhost:8001`.
+
+To make Kong Admin API accessible from other locations, let's setup a secure [loopback proxy](https://docs.konghq.com/0.14.x/secure-admin-api/#kong-api-loopback) with key authentication, HTTPS-enforcement, and request rate & size limiting.
+
+From the [admin console](#user-content-admin-console):
+```bash
+# Create the authenticated `/kong-admin` API, targeting the localhost port:
+curl http://localhost:8001/services/ -i -X POST \
+  --data 'name=kong-admin' \
+  --data 'protocol=http' \
+  --data 'port=8001' \
+  --data 'host=localhost'
+# Note the Service ID returned in previous response, use it in place of `$SERVICE_ID`.
+curl http://localhost:8001/plugins/ -i -X POST \
+  --data 'name=request-size-limiting' \
+  --data "config.allowed_payload_size=8" \
+  --data "service_id=$SERVICE_ID"
+curl http://localhost:8001/plugins/ -i -X POST \
+  --data 'name=rate-limiting' \
+  --data "config.minute=5" \
+  --data "service_id=$SERVICE_ID"
+curl http://localhost:8001/plugins/ -i -X POST \
+  --data 'name=key-auth' \
+  --data "config.hide_credentials=true" \
+  --data "service_id=$SERVICE_ID"
+curl http://localhost:8001/plugins/ -i -X POST \
+  --data 'name=acl' \
+  --data "config.whitelist=kong-admin" \
+  --data "service_id=$SERVICE_ID"
+curl http://localhost:8001/routes/ -i -X POST \
+  --data 'paths[]=/api/kong-admin' \
+  --data 'protocols[]=https' \
+  --data "service.id=$SERVICE_ID"
+
+# Create a consumer with username and authentication credentials:
+curl http://localhost:8001/consumers/ -i -X POST \
+  --data 'username=heroku-admin'
+curl http://localhost:8001/consumers/heroku-admin/acls -i -X POST \
+  --data 'group=kong-admin'
+curl http://localhost:8001/consumers/heroku-admin/key-auth -i -X POST -d ''
+# …this response contains the `"key"`, use it for `$ADMIN_KEY` below.
+```
+
+Now, access Kong's Admin API via the protected, public-facing proxy:
+
+✏️ *Replace variables such as `$APP_NAME` with values for your unique deployment.*
+
+```bash
+# Set the key in the request header:
+curl -H "apikey: $ADMIN_KEY" https://$APP_NAME.herokuapp.com/api/kong-admin/status
+```
+
 Troubleshooting
 ---------------
 
@@ -470,24 +533,24 @@ Troubleshooting
     heroku buildpacks
     ```
     
-    If it's not using `create-react-app-buildpack`, then set it:
+    If it's not using `crak-buildpack`, then set it:
 
     ```bash
-    heroku buildpacks:set mars/create-react-app
+    heroku buildpacks:set mars/crak
     ```
 
     …and deploy with the new buildpack:
 
     ```bash
-    git commit --allow-empty -m 'Switch to create-react-app-buildpack'
+    git commit --allow-empty -m 'Switch to crak-buildpack'
     git push heroku master
     ```
     
     If the error still occurs, then at least we know it's really using this buildpack! Proceed with troubleshooting.
 1. Check this README to see if it already mentions the issue.
-1. Search our [issues](https://github.com/mars/create-react-app-buildpack/issues?utf8=✓&q=is%3Aissue%20) to see if someone else has experienced the same problem.
+1. Search our [issues](https://github.com/mars/crak-buildpack/issues?utf8=✓&q=is%3Aissue%20) to see if someone else has experienced the same problem.
 1. Search the internet for mentions of the error message and its subject module, e.g. `ENOENT "node-sass"`
-1. File a new [issue](https://github.com/mars/create-react-app-buildpack/issues/new). Please include:
+1. File a new [issue](https://github.com/mars/crak-buildpack/issues/new). Please include:
    * build log output
    * link to GitHub repo with the source code (if private, grant read access to @mars)
 
@@ -497,13 +560,13 @@ Version compatibility
 
 This buildpack will never intentionally cause previously deployed apps to become undeployable. Using master [as directed in the main instructions](#user-content-create-the-heroku-app) will always deploy an app with the most recent version of this buildpack.
 
-[Releases are tagged](https://github.com/mars/create-react-app-buildpack/releases), so you can lock an app to a specific version, if that kind of determinism pleases you:
+[Releases are tagged](https://github.com/mars/crak-buildpack/releases), so you can lock an app to a specific version, if that kind of determinism pleases you:
 
 ```bash
-heroku buildpacks:set https://github.com/mars/create-react-app-buildpack.git#v6.0.0
+heroku buildpacks:set https://github.com/mars/crak-buildpack.git#v6.0.0
 ```
 
-✏️ *Replace `v6.0.0` with the desired [release tag](https://github.com/mars/create-react-app-buildpack/releases).*
+✏️ *Replace `v6.0.0` with the desired [release tag](https://github.com/mars/crak-buildpack/releases).*
 
 ♻️ Then, commit & deploy to rebuild on the new buildpack version.
 
@@ -528,18 +591,8 @@ This buildpack combines several buildpacks, specified in [`.buildpacks`](.buildp
      * generates a production bundle regardless of `NODE_ENV` setting
    * sets default [web server config](#user-content-web-server) unless `static.json` already exists
    * enables [runtime environment variables](#user-content-environment-variables)
-3. [`heroku/static` buildpack](https://github.com/heroku/heroku-buildpack-static)
-   * [Nginx](http://nginx.org/en/) web server
-   * [configure with `static.json`](#user-content-web-server) (see also [all static web server config](https://github.com/heroku/heroku-buildpack-static#user-content-configuration))
+3. [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong)
+   * serves [static website & APIs from Kong](https://docs.konghq.com/0.14.x/configuration/#serving-both-a-website-and-your-apis-from-kong)
+   * Kong proxy base URL is `/api/`
 
-🚀 The runtime `web` process is the [last buildpack](https://github.com/mars/create-react-app-buildpack/blob/master/.buildpacks)'s default processes. heroku-buildpack-static uses [`bin/boot`](https://github.com/heroku/heroku-buildpack-static/blob/master/bin/release) to launch its Nginx web server. Processes may be customized by committing a [Procfile](#user-content-procfile) to the app.
-
-
-### General-purpose SPA deployment
-
-[Some kind feedback](https://github.com/mars/create-react-app-buildpack/issues/2) pointed out that this buildpack is not necessarily specific to `create-react-app`.
-
-This buildpack can deploy any SPA [single-page app] as long as it meets the following requirements:
-
-* `npm run build` performs the transpile/bundling
-* the file `build/index.html` or [the root specified in `static.json`](#user-content-customization) exists at runtime.
+🚀 The runtime `web` process is the [last buildpack](https://github.com/mars/crak-buildpack/blob/master/.buildpacks)'s default processes. Kong buildpack uses [`bin/heroku-buildpack-kong-web`](https://github.com/heroku/heroku-buildpack-static/blob/master/bin/release) to launch its Nginx web server. Processes may be customized by committing a [Procfile](#user-content-procfile) to the app.
