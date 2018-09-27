@@ -15,6 +15,7 @@ Deploy React.js web apps generated with [create-react-app](https://github.com/fa
   1. [Make it a git repo](#user-content-make-it-a-git-repo)
   1. [Create the Heroku app](#user-content-create-the-heroku-app)
   1. [Commit & deploy ♻️](#user-content-commit--deploy-️)
+  1. [Setup the default route](#user-content-setup-the-default-route)
   1. [Continue Development](#user-content-continue-development)
   1. [Push to Github](#user-content-push-to-github)
   1. [Testing](#user-content-testing)
@@ -75,10 +76,17 @@ heroku addons:create heroku-postgresql:hobby-dev
 git add .
 git commit -m "Start with create-react-app"
 git push heroku master
+```
+
+Once deployed, [setup the default route](#user-content-routing).
+
+Then, the app should be visible at its Heroku URL:
+
+```
 heroku open
 ```
 
-Once deployed, [continue development](#user-content-continue-development) 🌱
+Finally, [continue development](#user-content-continue-development) 🌱
 
 For explanation about these steps, continue reading the [next section](#user-content-usage).
 
@@ -143,6 +151,12 @@ git push heroku master
 ```bash
 git push heroku $BRANCH_NAME:master
 ```
+
+### Setup the default route
+
+*TODO Setup automatically via Kong database restore.*
+
+▶️ Follow the instructions in [Routing](#user-content-routing).
 
 ### Visit the app's public URL in your browser
 
@@ -212,13 +226,43 @@ If a different web server `"root"` is required, such as with a highly customized
 * `location /`'s' `root` must be set in [`config/nginx.template`](config/nginx.template)
 * the new bundle location may need to be [set to enable runtime environment variables](#user-content-custom-bundle-location).
 
-### Routing clean URLs
+### Routing
 
-*The default behavior now routes all unmatched requests to the React app for client-side routing.*
+Setup the default route with Kong to serve the React app from the root.
+
+First, start the [Admin console](#user-content-admin-console).
+
+Then, configure the service & route in Kong:
+
+```bash
+curl http://localhost:8001/services/ -i -X POST \
+  --data 'name=create-react-app' \
+  --data 'protocol=http' \
+  --data 'port=3000' \
+  --data 'host=127.0.0.1'
+# Note the Service ID returned in previous response, use it in place of `$SERVICE_ID`.
+curl http://localhost:8001/routes/ -i -X POST \
+  --data 'paths[]=/' \
+  --data 'protocols[]=https' \
+  --data "service.id=$SERVICE_ID"
+# …or to support insecure HTTP as well (not advised):
+curl http://localhost:8001/routes/ -i -X POST \
+  --data 'paths[]=/' \
+  --data 'protocols[]=http' \
+  --data 'protocols[]=https' \
+  --data "service.id=$SERVICE_ID"
+```
+
+✅ Now, React should be served at the app's URL, `https://$APP_NAME.herokuapp.com/`.
+
+🚥 Client-side routing is supported by default. Any server request that would result in 404 Not Found returns the React app.
+
+🔌 [Kong plugins](https://docs.konghq.com/hub/) may be used to provide access control and more.
+
 
 ### HTTPS-only
 
-*TODO Define HTTPS-only with Nginx*
+Setup secure-by-default behavior using Kong [Route `protocols`](https://docs.konghq.com/0.14.x/admin-api/#route-object), like in the [routing example](#user-content-routing).
 
 ### Proxy
 
@@ -228,15 +272,10 @@ Proxy XHR requests from the React UI in the browser to API backends. Use to prev
 
 To make calls through the proxy, use relative URL's in the React app which will be proxied to the configured target URL.
 
-Using the Kong gateway included in this buildpack, there are two level of prefixing. In `/api/service/`:
-
-  * `/api/` is Kong's prefix
-  * `/api/` + `service/` is the complete backend-specific prefix
-
-Here's how the proxy might rewrite a few requests:
+Using the Kong gateway included in this buildpack, how the proxy might rewrite a few requests:
 
 ```
-/api/search/results
+/api/search-results
   → https://search.example.com/results
   
 /api/accounts/users/me
@@ -248,8 +287,6 @@ Here's how the proxy might rewrite a few requests:
 The [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong) (see: 🏙 [Architecture](#user-content-architecture-)) provides [dynamic routing & plugin configuration](https://docs.konghq.com/0.14.x/admin-api/) to utilize Nginx for high-performance proxies in production.
 
 Define proxy config with Kong using its [Admin API](#user-content-kong-admin-api) to create a service & route:
-
-```bash
 
 ```bash
 curl http://localhost:8001/services/ -i -X POST \
