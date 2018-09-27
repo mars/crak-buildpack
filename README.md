@@ -1,7 +1,7 @@
 Heroku Buildpack for create-react-app with Kong gateway
 =======================================================
 
-🔬👨‍🔬 **The project is currently experimental, unstable.**
+🔬👨‍🔬 **The project is currently experimental.** It is fully functional now, but may by subject to breaking changes.
 
 ⭐️ A new version of [create-react-app-buildpack](https://github.com/mars/create-react-app-buildpack) that replaces the basic Nginx server with a [Kong gateway](https://konghq.com/) to support sophisticated access control, backend proxies, and more.
 
@@ -15,7 +15,6 @@ Deploy React.js web apps generated with [create-react-app](https://github.com/fa
   1. [Make it a git repo](#user-content-make-it-a-git-repo)
   1. [Create the Heroku app](#user-content-create-the-heroku-app)
   1. [Commit & deploy ♻️](#user-content-commit--deploy-️)
-  1. [Setup the default route](#user-content-setup-the-default-route)
   1. [Continue Development](#user-content-continue-development)
   1. [Push to Github](#user-content-push-to-github)
   1. [Testing](#user-content-testing)
@@ -76,17 +75,10 @@ heroku addons:create heroku-postgresql:hobby-dev
 git add .
 git commit -m "Start with create-react-app"
 git push heroku master
-```
-
-Once deployed, [setup the default route](#user-content-routing).
-
-Then, the app should be visible at its Heroku URL:
-
-```
 heroku open
 ```
 
-Finally, [continue development](#user-content-continue-development) 🌱
+Then, [continue development](#user-content-continue-development) 🌱
 
 For explanation about these steps, continue reading the [next section](#user-content-usage).
 
@@ -151,12 +143,6 @@ git push heroku master
 ```bash
 git push heroku $BRANCH_NAME:master
 ```
-
-### Setup the default route
-
-*TODO Setup automatically via Kong database restore.*
-
-▶️ Follow the instructions in [Routing](#user-content-routing).
 
 ### Visit the app's public URL in your browser
 
@@ -228,11 +214,11 @@ If a different web server `"root"` is required, such as with a highly customized
 
 ### Routing
 
-Setup the default route with Kong to serve the React app from the root.
+🚥 *Client-side routing is supported by default. Any server request that would result in 404 Not Found returns the React app.*
 
-First, start the [Admin console](#user-content-admin-console).
+Use [Admin console](#user-content-admin-console) configure services, routes, & plugins in Kong.
 
-Then, configure the service & route in Kong:
+This buildpack automatically configures Kong to serve the React app from the root. This is what is setup:
 
 ```bash
 curl http://localhost:8001/services/ -i -X POST \
@@ -245,17 +231,7 @@ curl http://localhost:8001/routes/ -i -X POST \
   --data 'paths[]=/' \
   --data 'protocols[]=https' \
   --data "service.id=$SERVICE_ID"
-# …or to support insecure HTTP as well (not advised):
-curl http://localhost:8001/routes/ -i -X POST \
-  --data 'paths[]=/' \
-  --data 'protocols[]=http' \
-  --data 'protocols[]=https' \
-  --data "service.id=$SERVICE_ID"
 ```
-
-✅ Now, React should be served at the app's URL, `https://$APP_NAME.herokuapp.com/`.
-
-🚥 Client-side routing is supported by default. Any server request that would result in 404 Not Found returns the React app.
 
 🔌 [Kong plugins](https://docs.konghq.com/hub/) may be used to provide access control and more.
 
@@ -272,7 +248,7 @@ Proxy XHR requests from the React UI in the browser to API backends. Use to prev
 
 To make calls through the proxy, use relative URL's in the React app which will be proxied to the configured target URL.
 
-Using the Kong gateway included in this buildpack, how the proxy might rewrite a few requests:
+Using the Kong gateway included in this buildpack, here's how the proxy can rewrite requests:
 
 ```
 /api/search-results

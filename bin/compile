@@ -49,9 +49,26 @@ fi
 echo "-----> Configure Kong runtime"
 
 mkdir -p "${BUILD_DIR}/bin/"
-  cp $BP_DIR/bin/app/heroku-* "${BUILD_DIR}/bin/"
-
 mkdir -p "${BUILD_DIR}/config/"
+cp $BP_DIR/bin/app/heroku-* "${BUILD_DIR}/bin/"
+
+prerelease="bin/prerelease"
+if [ -f "${BUILD_DIR}/${prerelease}" ]
+  then
+  echo "Using custom '${prerelease}'" | indent
+else
+  echo "Writing default '${prerelease}'" | indent
+  cp $BP_DIR/bin/app/prerelease "${BUILD_DIR}/bin/"
+fi
+
+db_dump="config/pg-kong.dump"
+if [ -f "${BUILD_DIR}/${db_dump}" ]
+  then
+  echo "Using custom '${db_dump}'" | indent
+else
+  echo "Writing default '${db_dump}'" | indent
+  cp $BP_DIR/${db_dump} "${BUILD_DIR}/config/"
+fi
 
 kong_conf="config/kong.conf.etlua"
 if [ -f "${BUILD_DIR}/${kong_conf}" ]

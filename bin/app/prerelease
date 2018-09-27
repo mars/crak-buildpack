@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -u
+set +e
+
+# Only run this if Kong's tables have not be initialized.
+psql $DATABASE_URL -c "SELECT 1 FROM consumers"
+data_exists=$?
+
+if [ ! $data_exists -eq 0 ]
+then
+  echo "Loading base Kong config to serve React app from root"
+  pg_restore --verbose --clean --no-acl --no-owner -d "$DATABASE_URL" $HOME/config/pg-kong.dump
+fi
+
+set -e
