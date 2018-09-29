@@ -216,7 +216,7 @@ If a different web server `"root"` is required, such as with a highly customized
 
 🚥 *Client-side routing is supported by default. Any server request that would result in 404 Not Found returns the React app.*
 
-Use [Admin console](#user-content-admin-console) configure services, routes, & plugins in Kong.
+Use [the console](#user-content-admin-console) configure services, routes, & plugins with [Kong Admin API](http://docs.konghq.com/0.14.x/admin-api/).
 
 This buildpack automatically configures Kong to serve the React app from the root. This is what is setup:
 
@@ -462,30 +462,45 @@ Private modules are supported during build.
 
 Kong Admin API
 --------------
-Use Kong CLI and the Admin API in a [one-off dyno](https://devcenter.heroku.com/articles/one-off-dynos):
 
 ### Admin console
+
+Use `kong` CLI and access (Kong's HTTP/REST Admin API)[http://docs.konghq.com/0.14.x/admin-api/] in a [one-off dyno](https://devcenter.heroku.com/articles/one-off-dynos):
+
 ✏️ *Replace `$APP_NAME` with the Heroku app name.*
 
 ```bash
 heroku run bash --app $APP_NAME
+```
 
-# Run Kong in the background of the one-off dyno:
+Run Kong in the background of the one-off dyno:
+
+```bash
 ~ $ bin/heroku-buildpack-background-start
+```
 
-# Then, use `curl` to issue Admin API commands:
-# (Note: the `$KONG_ADMIN_LISTEN` variable is already defined)
-~ $ curl http://$KONG_ADMIN_LISTEN
+Use [`curl`](https://ec.haxx.se/cmdline-options.html) to issue Admin API commands:
 
-# Example CLI commands:
-# (Note: some commands require the config file and others the prefix)
-# (Note: the `$KONG_CONF` variable is already defined)
+```bash
+~ $ curl http://localhost:8001
+~ $ curl http://localhost:8001/status
+~ $ curl http://localhost:8001/services
+~ $ curl http://localhost:8001/routes
+```
+
+Execute CLI commands:
+
+⚠️ *Some commands require the config file and others the prefix.*
+
+✏️ *The `$KONG_CONF` variable is already defined.*
+
+```bash
 ~ $ kong migrations list -c $KONG_CONF
 ~ $ kong health -p /app/kong-runtime
 ```
 
 ### Expose the Admin API
-Kong's Admin API has no built-in authentication. Its exposure must be limited to a restricted, private network. For Kong on Heroku, the Admin API listens privately on `localhost:8001`.
+[Kong Admin API](http://docs.konghq.com/0.14.x/admin-api/) has no built-in authentication. Its exposure must be limited to a restricted, private network. For Kong on Heroku, the Admin API listens privately on `localhost:8001`.
 
 To make Kong Admin API accessible from other locations, let's setup a secure [loopback proxy](https://docs.konghq.com/0.14.x/secure-admin-api/#kong-api-loopback) with key authentication, HTTPS-enforcement, and request rate & size limiting.
 
@@ -605,7 +620,7 @@ This buildpack combines several buildpacks, specified in [`.buildpacks`](.buildp
    * sets default [web server config](#user-content-web-server) unless `static.json` already exists
    * enables [runtime environment variables](#user-content-environment-variables)
 3. [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong)
-   * serves [static website & APIs from Kong](https://docs.konghq.com/0.14.x/configuration/#serving-both-a-website-and-your-apis-from-kong)
-   * Kong proxy base URL is `/api/`
+   * [root route automatically configured](#user-content-routing) to serve the React app
+   * customize routing/proxies with [Kong Admin API](http://docs.konghq.com/0.14.x/admin-api/) using [Admin console](#user-content-admin-console)
 
 🚀 The runtime `web` process is the [last buildpack](https://github.com/mars/crak-buildpack/blob/master/.buildpacks)'s default processes. Kong buildpack uses [`bin/heroku-buildpack-kong-web`](https://github.com/heroku/heroku-buildpack-static/blob/master/bin/release) to launch its Nginx web server. Processes may be customized by committing a [Procfile](#user-content-procfile) to the app.
