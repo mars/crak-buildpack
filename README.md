@@ -465,7 +465,7 @@ Kong Admin API
 
 ### Admin console
 
-Use `kong` CLI and access (Kong's HTTP/REST Admin API)[http://docs.konghq.com/0.14.x/admin-api/] in a [one-off dyno](https://devcenter.heroku.com/articles/one-off-dynos):
+Use `kong` CLI and access [Kong's HTTP/REST Admin API](http://docs.konghq.com/0.14.x/admin-api/) in a [one-off dyno](https://devcenter.heroku.com/articles/one-off-dynos):
 
 ✏️ *Replace `$APP_NAME` with the Heroku app name.*
 
