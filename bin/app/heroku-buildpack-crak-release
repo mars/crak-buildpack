@@ -13,4 +13,5 @@ sleep 5
 terraform init -backend-config="conn_str=$DATABASE_URL"
 
 # Perform all pending Terraform config changes
-terraform apply -auto-approve -input=false
+# Limit parallelism to work nicely with free hobby-dev Heroku Postgres
+terraform apply -auto-approve -input=false -parallelism=4
