@@ -83,6 +83,10 @@ else
   cp "${BP_DIR}/${main_tf}" "${BUILD_DIR}/${main_tf}" | indent
 fi
 
+echo 'Setting up initializer' | indent
+mkdir -p "$BUILD_DIR/.profile.d"
+cp $BP_DIR/.profile.d/* $BUILD_DIR/.profile.d/
+
 routes_tf="routes.tf"
 if [ -f "${BUILD_DIR}/${routes_tf}" ]
   then

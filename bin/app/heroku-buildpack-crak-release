@@ -9,9 +9,6 @@ bin/heroku-buildpack-kong-release
 bin/heroku-buildpack-kong-background-start
 sleep 5
 
-# Install modules & setup Postgres backend
-terraform init -backend-config="conn_str=$DATABASE_URL"
-
 # Perform all pending Terraform config changes
 # Limit parallelism to work nicely with free hobby-dev Heroku Postgres
 terraform apply -auto-approve -input=false -parallelism=4
