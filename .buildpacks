@@ -1,3 +1,4 @@
 https://github.com/heroku/heroku-buildpack-nodejs.git
 https://github.com/mars/create-react-app-inner-buildpack.git#v7.0.0
+https://github.com/mars/terraforming-buildpack.git#v1.0.0
 https://github.com/heroku/heroku-buildpack-kong.git#v6.0.0
