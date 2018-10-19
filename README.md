@@ -22,7 +22,7 @@ Deploy React.js web apps generated with [create-react-app](https://github.com/fa
   * [Procfile](#user-content-procfile)
   * [Web server](#user-content-web-server)
     * [HTTPS-only](#user-content-https-only)
-    * [Authentication](#user-content-basic-authentication)
+    * [Authentication](#user-content-authentication)
     * [Proxy](#user-content-proxy)
   * [Environment variables](#user-content-environment-variables)
     * [Set vars on Heroku](#user-content-set-vars-on-heroku)
