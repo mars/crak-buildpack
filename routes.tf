@@ -1,3 +1,7 @@
+# Default routing for mars/crak buildpack.
+#
+# This Terraform config my be copied into the app and customized.
+
 resource "kong_service" "react" {
   name     = "create-react-app"
   protocol = "http"
