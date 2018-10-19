@@ -52,24 +52,6 @@ mkdir -p "${BUILD_DIR}/bin/"
 mkdir -p "${BUILD_DIR}/config/"
 cp $BP_DIR/bin/app/heroku-* "${BUILD_DIR}/bin/"
 
-prerelease="bin/prerelease"
-if [ -f "${BUILD_DIR}/${prerelease}" ]
-  then
-  echo "Using custom '${prerelease}'" | indent
-else
-  echo "Writing default '${prerelease}'" | indent
-  cp $BP_DIR/bin/app/prerelease "${BUILD_DIR}/bin/"
-fi
-
-db_dump="config/pg-kong.dump"
-if [ -f "${BUILD_DIR}/${db_dump}" ]
-  then
-  echo "Using custom '${db_dump}'" | indent
-else
-  echo "Writing default '${db_dump}'" | indent
-  cp $BP_DIR/${db_dump} "${BUILD_DIR}/config/"
-fi
-
 kong_conf="config/kong.conf.etlua"
 if [ -f "${BUILD_DIR}/${kong_conf}" ]
   then
@@ -86,6 +68,32 @@ if [ -f "${BUILD_DIR}/${nginx_conf}" ]
 else
   echo "Writing default '${nginx_conf}'" | indent
   cp "${BP_DIR}/${nginx_conf}" "${BUILD_DIR}/${nginx_conf}" | indent
+fi
+
+echo "-----> Configure Terraform runtime"
+mkdir -p "${BUILD_DIR}/terraform.d/plugins/linux_amd64"
+cp $BP_DIR/terraform.d/plugins/linux_amd64/* "${BUILD_DIR}/terraform.d/plugins/linux_amd64/"
+
+main_tf="main.tf"
+if [ -f "${BUILD_DIR}/${main_tf}" ]
+  then
+  echo "Using custom '${main_tf}'" | indent
+else
+  echo "Writing default '${main_tf}'" | indent
+  cp "${BP_DIR}/${main_tf}" "${BUILD_DIR}/${main_tf}" | indent
+fi
+
+echo 'Setting up initializer' | indent
+mkdir -p "$BUILD_DIR/.profile.d"
+cp $BP_DIR/.profile.d/* $BUILD_DIR/.profile.d/
+
+routes_tf="routes.tf"
+if [ -f "${BUILD_DIR}/${routes_tf}" ]
+  then
+  echo "Using custom '${routes_tf}'" | indent
+else
+  echo "Writing default '${routes_tf}'" | indent
+  cp "${BP_DIR}/${routes_tf}" "${BUILD_DIR}/${routes_tf}" | indent
 fi
 
 echo '=====> Compiling `.buildpacks` with heroku-buildpack-multi'

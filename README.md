@@ -22,6 +22,7 @@ Deploy React.js web apps generated with [create-react-app](https://github.com/fa
   * [Procfile](#user-content-procfile)
   * [Web server](#user-content-web-server)
     * [HTTPS-only](#user-content-https-only)
+    * [Authentication](#user-content-basic-authentication)
     * [Proxy](#user-content-proxy)
   * [Environment variables](#user-content-environment-variables)
     * [Set vars on Heroku](#user-content-set-vars-on-heroku)
@@ -72,6 +73,7 @@ cd $APP_NAME
 git init
 heroku create $APP_NAME --buildpack mars/crak
 heroku addons:create heroku-postgresql:hobby-dev
+heroku config:set TERRAFORM_BIN_URL=https://terraforming-buildpack.s3.amazonaws.com/terraform_0.11.9-pg.02_linux_amd64.zip
 git add .
 git commit -m "Start with create-react-app"
 git push heroku master
@@ -126,6 +128,14 @@ The web server is a [Kong gateway](https://konghq.com/) that uses [Heroku Postgr
 
 ```bash
 heroku addons:create heroku-postgresql:hobby-dev
+```
+
+### Enable Terraform with Postgres
+
+[Terraform](https://www.terraform.io) is used to configure Kong routes. To enable [Heroku Postgres](https://www.heroku.com/postgres) as the Terraform backend, this app uses the `terraform` binary built from an unmerged pull request to Terraform (see: [hashicorp/terraform #19070](https://github.com/hashicorp/terraform/pull/19070)).
+
+```bash
+heroku config:set TERRAFORM_BIN_URL=https://terraforming-buildpack.s3.amazonaws.com/terraform_0.11.9-pg.02_linux_amd64.zip
 ```
 
 ### Commit & deploy ♻️
@@ -189,15 +199,16 @@ Customization
 
 ### Procfile
 
-Heroku apps may declare what processes are launched for a successful deployment by way of the [`Procfile`](https://devcenter.heroku.com/articles/procfile). This buildpack's default process comes from [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong). (See: 🏙 [Architecture](#user-content-architecture-)). The implicit `Procfile` to start the static web server is:
+Heroku apps may declare what processes are launched for a successful deployment by way of the [`Procfile`](https://devcenter.heroku.com/articles/procfile). This buildpack's default process comes from [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong). (See: 🏙 [Architecture](#user-content-architecture-)).
+
+The implicit `Procfile` for this buildpack is:
 
 ```
 web: bin/heroku-buildpack-kong-web
+release: bin/heroku-buildpack-crak-release
 ```
 
-To customize an app's processes, commit a `Procfile` and deploy. Include `web: bin/heroku-buildpack-kong-web` to launch the default web process, or you may replace the default web process. Additional [process types](https://devcenter.heroku.com/articles/procfile#declaring-process-types) may be added to run any number of dynos with whatever arbitrary commands you want, and scale each independently.
-
-🚦 *If replacing the default web process, please check this buildpack's [Purpose](#user-content-purpose) to avoid misusing this buildpack (such as running a Node server) which can lead to confusing deployment issues.*
+To customize an app's processes, commit a `Procfile` and deploy. Include the `web` & `release` processes as shown above to keep the default behaviors. Additional [process types](https://devcenter.heroku.com/articles/procfile#declaring-process-types) may be added to run any number of dynos with whatever arbitrary commands you want, and scale each independently.
 
 ### Web server
 
@@ -214,31 +225,98 @@ If a different web server `"root"` is required, such as with a highly customized
 
 ### Routing
 
-🚥 *Client-side routing is supported by default. Any server request that would result in 404 Not Found returns the React app.*
+🚥 *This buildpack automatically configures Kong to serve the React app from the root. **Client-side routing is supported by default.** Any server request that would result in 404 Not Found returns the React app.*
 
-Use [the console](#user-content-admin-console) configure services, routes, & plugins with [Kong Admin API](http://docs.konghq.com/0.14.x/admin-api/).
+Create a [`routes.tf`](routes.tf) file to configure services, routes, & plugins with the [Kong Terraform provider](https://github.com/kevholditch/terraform-provider-kong).
 
-This buildpack automatically configures Kong to serve the React app from the root. This is what is setup:
+Default [`routes.tf`](routes.tf) contains:
 
-```bash
-curl http://localhost:8001/services/ -i -X POST \
-  --data 'name=create-react-app' \
-  --data 'protocol=http' \
-  --data 'port=3000' \
-  --data 'host=127.0.0.1'
-# Note the Service ID returned in previous response, use it in place of `$SERVICE_ID`.
-curl http://localhost:8001/routes/ -i -X POST \
-  --data 'paths[]=/' \
-  --data 'protocols[]=https' \
-  --data "service.id=$SERVICE_ID"
+```hcl
+resource "kong_service" "react" {
+  name     = "create-react-app"
+  protocol = "http"
+  host     = "127.0.0.1"
+  port     = 3000
+}
+
+resource "kong_route" "web_root" {
+  protocols  = ["https", "http"]
+  paths      = ["/"]
+  service_id = "${kong_service.react.id}"
+}
 ```
 
-🔌 [Kong plugins](https://docs.konghq.com/hub/) may be used to provide access control and more.
+✏️ *When creating a custom [`routes.tf`](routes.tf), keep these `react` & `web_root` resources to preserve the original routing behavior.*
+
+🔌 [Kong plugins](https://docs.konghq.com/hub/) may be used to provide access control and more. Configure them through the [Kong Terraform provider](https://github.com/kevholditch/terraform-provider-kong).
 
 
 ### HTTPS-only
 
-Setup secure-by-default behavior using Kong [Route `protocols`](https://docs.konghq.com/0.14.x/admin-api/#route-object), like in the [routing example](#user-content-routing).
+Setup secure routes using Kong [Route `protocols`](https://docs.konghq.com/0.14.x/admin-api/#route-object).
+
+Example HTTPS-only route defined in [`routes.tf`](routes.tf):
+
+```hcl
+resource "kong_route" "web_root" {
+  protocols  = ["https"]
+  paths      = ["/"]
+  service_id = "${kong_service.react.id}"
+}
+```
+
+### Authentication
+
+Password-protect the app by adding the [basic-auth](https://docs.konghq.com/hub/kong-inc/basic-auth/) plugin to the `/` root route.
+
+Example basic auth config, appended to [`routes.tf`](routes.tf):
+
+```hcl
+provider "random" {
+  version = "~> 2.0"
+}
+
+resource "random_id" "private_access_password" {
+  byte_length = 32
+}
+
+output "private_access_password" {
+  value = "${random_id.private_access_password.b64_url}"
+}
+
+resource "kong_plugin" "react_basic_auth" {
+  name        = "basic-auth"
+  service_id  = "${kong_service.react.id}"
+
+  config = {
+    hide_credentials = "true"
+  }
+}
+
+resource "kong_consumer" "private_access" {
+  username = "private"
+}
+
+resource "kong_consumer_plugin_config" "private_access_credentials" {
+  consumer_id = "${kong_consumer.private_access.username}"
+  plugin_name = "basic-auth"
+
+  config = {
+    username = "private"
+    password = "${random_id.private_access_password.b64_url}"
+  }
+}
+```
+
+Output the generated password with:
+
+```
+heroku run terraform output private_access_password
+```
+
+⚠️ *create-react-app's default ServiceWorker config may allow the site to reload without authentication. [Unregister the ServiceWorker](https://github.com/facebook/create-react-app/blob/v2.0.5/packages/react-scripts/template/README.md#making-a-progressive-web-app), if password should be required for every page load. Depending on the version of create-react-app used to generate the app, the ServiceWorker may or may not be enabled by default.*
+
+🔌 [Kong plugins](https://docs.konghq.com/hub/) may be used to provide other types of authentication. Configure them through the [Kong Terraform provider](https://github.com/kevholditch/terraform-provider-kong).
 
 ### Proxy
 
@@ -262,43 +340,46 @@ Using the Kong gateway included in this buildpack, here's how the proxy can rewr
 
 The [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong) (see: 🏙 [Architecture](#user-content-architecture-)) provides [dynamic routing & plugin configuration](https://docs.konghq.com/0.14.x/admin-api/) to utilize Nginx for high-performance proxies in production.
 
-Define proxy config with Kong using its [Admin API](#user-content-kong-admin-api) to create a service & route:
+Define proxy config in [`routes.tf`](routes.tf) using the [Kong Terraform provider](https://github.com/kevholditch/terraform-provider-kong) to create a service & route.
 
-```bash
-curl http://localhost:8001/services/ -i -X POST \
-  --data 'name=sushi' \
-  --data 'protocol=https' \
-  --data 'port=443' \
-  --data 'host=sushi.herokuapp.com'
-# Note the Service ID returned in previous response, use it in place of `$SERVICE_ID`.
-curl http://localhost:8001/routes/ -i -X POST \
-  --data 'paths[]=/api/sushi' \
-  --data 'protocols[]=https' \
-  --data "service.id=$SERVICE_ID"
+For example, to configure this proxy:
+
+```
+/api/search-results
+  → https://search.example.com/results
 ```
 
-List existing services & routes:
+…use this config:
 
-```bash
-curl http://localhost:8001/services/
-curl http://localhost:8001/routes/
+```hcl
+resource "kong_service" "search_api" {
+  name     = "search"
+  protocol = "https"
+  host     = "search.example.com"
+  port     = 443
+  path     = "/results"
+}
+
+resource "kong_route" "search_api" {
+  protocols  = ["https"]
+  paths      = ["/api/search-results"]
+  service_id = "${kong_service.search_api.id}"
+}
 ```
-
-👓 See: [Kong Admin API docs](https://docs.konghq.com/0.14.x/admin-api/)
 
 #### Proxy for local development
 
 create-react-app itself provides a built-in [proxy for development](https://github.com/facebookincubator/create-react-app/blob/master/packages/react-scripts/template/README.md#user-content-proxying-api-requests-in-development). This may be configured to match the behavior of [proxy for deployment](#user-content-proxy-for-deployment).
 
-Add `"proxy"` to `package.json`:
+For example add `"proxy"` to `package.json`:
 
 ```json
 {
   "proxy": {
-    "/api/sushi": {
+    "/api/search-results": {
       "target": "http://localhost:8000",
       "pathRewrite": {
-        "^/api/sushi": "/"
+        "^/api/search-results": "/results"
       }
     }
   }
@@ -478,7 +559,7 @@ heroku run bash --app $APP_NAME
 Run Kong in the background of the one-off dyno:
 
 ```bash
-~ $ bin/heroku-buildpack-background-start
+~ $ bin/heroku-buildpack-kong-background-start
 ```
 
 Use [`curl`](https://ec.haxx.se/cmdline-options.html) to issue Admin API commands:
@@ -506,48 +587,96 @@ Execute CLI commands:
 
 To make Kong Admin API accessible from other locations, let's setup a secure [loopback proxy](https://docs.konghq.com/0.14.x/secure-admin-api/#kong-api-loopback) with key authentication, HTTPS-enforcement, and request rate & size limiting.
 
-From the [admin console](#user-content-admin-console):
-```bash
-# Create the authenticated `/kong-admin` API, targeting the localhost port:
-curl http://localhost:8001/services/ -i -X POST \
-  --data 'name=kong-admin' \
-  --data 'protocol=http' \
-  --data 'port=8001' \
-  --data 'host=localhost'
-# Note the Service ID returned in previous response, use it in place of `$SERVICE_ID`.
-curl http://localhost:8001/plugins/ -i -X POST \
-  --data 'name=request-size-limiting' \
-  --data "config.allowed_payload_size=8" \
-  --data "service_id=$SERVICE_ID"
-curl http://localhost:8001/plugins/ -i -X POST \
-  --data 'name=rate-limiting' \
-  --data "config.minute=5" \
-  --data "service_id=$SERVICE_ID"
-curl http://localhost:8001/plugins/ -i -X POST \
-  --data 'name=key-auth' \
-  --data "config.hide_credentials=true" \
-  --data "service_id=$SERVICE_ID"
-curl http://localhost:8001/plugins/ -i -X POST \
-  --data 'name=acl' \
-  --data "config.whitelist=kong-admin" \
-  --data "service_id=$SERVICE_ID"
-curl http://localhost:8001/routes/ -i -X POST \
-  --data 'paths[]=/api/kong-admin' \
-  --data 'protocols[]=https' \
-  --data "service.id=$SERVICE_ID"
+First, set a strong, cryptographic Admin Key into the Heroku config var:
 
-# Create a consumer with username and authentication credentials:
-curl http://localhost:8001/consumers/ -i -X POST \
-  --data 'username=heroku-admin'
-curl http://localhost:8001/consumers/heroku-admin/acls -i -X POST \
-  --data 'group=kong-admin'
-curl http://localhost:8001/consumers/heroku-admin/key-auth -i -X POST -d ''
-# …this response contains the `"key"`, use it for `$ADMIN_KEY` below.
+```bash
+heroku config:set TF_VAR_kong_admin_key=<your unique key>
 ```
+
+Then, define Admin API config in the [`routes.tf`](routes.tf) file using the [Kong Terraform provider](https://github.com/kevholditch/terraform-provider-kong) to create a service, route, & plugins:
+
+```hcl
+variable "kong_admin_key" {
+  type = "string"
+}
+
+resource "kong_service" "kong_admin_api" {
+  name     = "kong-admin"
+  protocol = "http"
+  host     = "127.0.0.1"
+  port     = 8001
+}
+
+resource "kong_route" "kong_admin_api" {
+  protocols  = ["https"]
+  paths      = ["/kong-admin"]
+  service_id = "${kong_service.kong_admin_api.id}"
+}
+
+resource "kong_plugin" "kong_admin_api_request_size" {
+  name       = "request-size-limiting"
+  service_id = "${kong_service.kong_admin_api.id}"
+
+  config = {
+    allowed_payload_size = 8
+  }
+}
+
+resource "kong_plugin" "kong_admin_api_rate" {
+  name       = "rate-limiting"
+  service_id = "${kong_service.kong_admin_api.id}"
+
+  config = {
+    minute = 5
+  }
+}
+
+resource "kong_plugin" "kong_admin_api_key_auth" {
+  name       = "key-auth"
+  service_id = "${kong_service.kong_admin_api.id}"
+
+  config = {
+    hide_credentials = true
+  }
+}
+
+resource "kong_plugin" "kong_admin_api_acl" {
+  name       = "acl"
+  service_id = "${kong_service.kong_admin_api.id}"
+
+  config = {
+    whitelist = "kong-admin"
+  }
+}
+
+resource "kong_consumer" "kong_admin_api_consumer" {
+  username  = "heroku-admin"
+}
+
+resource "kong_consumer_plugin_config" "kong_admin_api_consumer_config_acls" {
+  consumer_id = "${kong_consumer.kong_admin_api_consumer.id}"
+  plugin_name = "acls"
+
+  config = {
+    group = "kong-admin"
+  }
+}
+
+resource "kong_consumer_plugin_config" "kong_admin_api_consumer_config_key_auth" {
+  consumer_id = "${kong_consumer.kong_admin_api_consumer.id}"
+  plugin_name = "key-auth"
+  
+  config = {
+    key = "${var.kong_admin_key}"
+  }
+}
+```
+
+Commit & deploy these [`routes.tf`](routes.tf) changes to the app.
 
 Now, access Kong's Admin API via the protected, public-facing proxy:
 
-✏️ *Replace variables such as `$APP_NAME` with values for your unique deployment.*
+✏️ *Replace variables such as `$ADMIN_KEY` & `$APP_NAME` with values for your unique deployment.*
 
 ```bash
 # Set the key in the request header:
@@ -621,8 +750,10 @@ This buildpack combines several buildpacks, specified in [`.buildpacks`](.buildp
      * generates a production bundle regardless of `NODE_ENV` setting
    * sets default [web server config](#user-content-web-server) unless `static.json` already exists
    * enables [runtime environment variables](#user-content-environment-variables)
+3. [`mars/terraforming`](https://github.com/mars/terraforming-buildpack)
+   * declarative configuration of routing behavior with the [Kong Terraform provider](https://github.com/kevholditch/terraform-provider-kong)
+   * `terraform apply` is run in [release phase](https://devcenter.heroku.com/articles/release-phase)
 3. [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong)
    * [root route automatically configured](#user-content-routing) to serve the React app
-   * customize routing/proxies with [Kong Admin API](http://docs.konghq.com/0.14.x/admin-api/) using [Admin console](#user-content-admin-console)
 
-🚀 The runtime `web` process is the [last buildpack](https://github.com/mars/crak-buildpack/blob/master/.buildpacks)'s default processes. Kong buildpack uses [`bin/heroku-buildpack-kong-web`](https://github.com/heroku/heroku-buildpack-static/blob/master/bin/release) to launch its Nginx web server. Processes may be customized by committing a [Procfile](#user-content-procfile) to the app.
+🚀 The runtime `web` process is [`bin/heroku-buildpack-kong-web`](https://github.com/heroku/heroku-buildpack-kong/blob/master/bin/app/heroku-buildpack-kong-web), which launches Kong's Nginx web server. Processes may be customized by committing a [Procfile](#user-content-procfile) to the app.

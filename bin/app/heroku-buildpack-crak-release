@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -eu
+
+# Run the Kong buildpack's release phase
+bin/heroku-buildpack-kong-release
+
+# Start Kong API in the background of the dyno
+# to receive requests from the Terraform provider
+bin/heroku-buildpack-kong-background-start
+sleep 5
+
+# Perform all pending Terraform config changes
+# Limit parallelism to work nicely with free hobby-dev Heroku Postgres
+terraform apply -auto-approve -input=false -parallelism=4
