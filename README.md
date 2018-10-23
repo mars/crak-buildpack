@@ -21,6 +21,8 @@ Deploy React.js web apps generated with [create-react-app](https://github.com/fa
 * 👓 [Customization](#user-content-customization)
   * [Procfile](#user-content-procfile)
   * [Web server](#user-content-web-server)
+    * [Changing the root](#user-content-changing-the-root)
+    * [Routing](#user-content-routing)
     * [HTTPS-only](#user-content-https-only)
     * [Authentication](#user-content-authentication)
     * [Proxy](#user-content-proxy)
