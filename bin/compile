@@ -74,6 +74,10 @@ echo "-----> Configure Terraform runtime"
 mkdir -p "${BUILD_DIR}/terraform.d/plugins/linux_amd64"
 cp $BP_DIR/terraform.d/plugins/linux_amd64/* "${BUILD_DIR}/terraform.d/plugins/linux_amd64/"
 
+terraform_bin_name=terraform_0.11.9-pg.02
+echo "Requiring custom binary to support Postgres backend (${terraform_bin_name})" | indent
+export TERRAFORM_BIN_URL="https://terraforming-buildpack.s3.amazonaws.com/${terraform_bin_name}_linux_amd64.zip"
+
 main_tf="main.tf"
 if [ -f "${BUILD_DIR}/${main_tf}" ]
   then

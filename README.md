@@ -33,6 +33,7 @@ Deploy React.js web apps generated with [create-react-app](https://github.com/fa
         * [Custom bundle location](#user-content-custom-bundle-location)
     * [using an Add-on's config](#user-content-add-on-config-vars)
   * [npm Private Packages](#user-content-npm-private-packages)
+  * [Terraform](#user-content-terraform)
   * [Kong Admin API](#user-content-kong-admin-api)
 * 🕵️ [Troubleshooting](#user-content-troubleshooting)
 * 📍 [Version compatibility](#user-content-version-compatibility)
@@ -73,7 +74,6 @@ cd $APP_NAME
 git init
 heroku create $APP_NAME --buildpack mars/crak
 heroku addons:create heroku-postgresql:hobby-dev
-heroku config:set TERRAFORM_BIN_URL=https://terraforming-buildpack.s3.amazonaws.com/terraform_0.11.9-pg.02_linux_amd64.zip
 git add .
 git commit -m "Start with create-react-app"
 git push heroku master
@@ -128,14 +128,6 @@ The web server is a [Kong gateway](https://konghq.com/) that uses [Heroku Postgr
 
 ```bash
 heroku addons:create heroku-postgresql:hobby-dev
-```
-
-### Enable Terraform with Postgres
-
-[Terraform](https://www.terraform.io) is used to configure Kong routes. To enable [Heroku Postgres](https://www.heroku.com/postgres) as the Terraform backend, this app uses the `terraform` binary built from an unmerged pull request to Terraform (see: [hashicorp/terraform #19070](https://github.com/hashicorp/terraform/pull/19070)).
-
-```bash
-heroku config:set TERRAFORM_BIN_URL=https://terraforming-buildpack.s3.amazonaws.com/terraform_0.11.9-pg.02_linux_amd64.zip
 ```
 
 ### Commit & deploy ♻️
@@ -543,6 +535,37 @@ Private modules are supported during build.
     heroku config:set NPM_TOKEN=xxxxx
     ```
 
+Terraform
+---------
+
+[Terraform](https://www.terraform.io) is included to support [declarative configuration of routing](#user-content-routing) behavior with the [Kong provider](https://github.com/kevholditch/terraform-provider-kong).
+
+Any `*.tf` files present in the root of the app (`main.tf` & `routes.tf` by default) will be forcefully applied during [release phase](https://devcenter.heroku.com/articles/release-phase). All changes, additions, & destructions are auto-accepted. If any error occurs, the release fails.
+
+### Running Terraform commands
+
+Example running one-off Terraform commands:
+
+```bash
+heroku run terraform show
+```
+
+Some commands require the local Kong Admin API to be on-line:
+
+```bash
+heroku run "heroku-buildpack-kong-background-start && terraform plan"
+heroku run "heroku-buildpack-kong-background-start && terraform refresh"
+```
+
+### Additional Terraform providers
+
+Terraform can of course be used to provision & configure [other providers' resources](https://www.terraform.io/docs/providers/) too [including Heroku](https://www.terraform.io/docs/providers/heroku/) itself, but the force-apply technique used during release means that accidental mistakes in config can be destructive to pre-existing resources.
+
+To use Terraform collaboratively for higher-level configuration on Heroku, check out:
+
+  * `heroku run terraform apply` → [mars/terraforming-app](https://github.com/mars/terraforming-app)
+  * microservices + API gateway → [mars/terraform-heroku-common-kong-microservices](https://github.com/mars/terraform-heroku-common-kong-microservices)
+
 Kong Admin API
 --------------
 
@@ -750,10 +773,18 @@ This buildpack combines several buildpacks, specified in [`.buildpacks`](.buildp
      * generates a production bundle regardless of `NODE_ENV` setting
    * sets default [web server config](#user-content-web-server) unless `static.json` already exists
    * enables [runtime environment variables](#user-content-environment-variables)
-3. [`mars/terraforming`](https://github.com/mars/terraforming-buildpack)
-   * declarative configuration of routing behavior with the [Kong Terraform provider](https://github.com/kevholditch/terraform-provider-kong)
-   * `terraform apply` is run in [release phase](https://devcenter.heroku.com/articles/release-phase)
+3. [`mars/terraforming` buildpack](https://github.com/mars/terraforming-buildpack)
+   * included to provide [declarative configuration of routing](#user-content-routing)
+   * see [usage details](#user-content-terraform)
+   * maintains its state in the [Heroku Postgres database](https://www.heroku.com/postgres)
+     * to enable the `pg` backend, this app uses the `terraform` binary built from an unmerged pull request to Terraform (see: [hashicorp/terraform #19070](https://github.com/hashicorp/terraform/pull/19070))
 3. [`heroku-community/kong` buildpack](https://github.com/heroku/heroku-buildpack-kong)
-   * [root route automatically configured](#user-content-routing) to serve the React app
+   * React app served as a static web site on localhost:3000
+   * [root route automatically configured](#user-content-routing) to publicly serve the React app
+   * preset, customizable [Nginx config](config/nginx.template) & [Kong config](config/kong.conf.etlua)
+   * maintains its state in the [Heroku Postgres database](https://www.heroku.com/postgres)
 
 🚀 The runtime `web` process is [`bin/heroku-buildpack-kong-web`](https://github.com/heroku/heroku-buildpack-kong/blob/master/bin/app/heroku-buildpack-kong-web), which launches Kong's Nginx web server. Processes may be customized by committing a [Procfile](#user-content-procfile) to the app.
+
+A [Heroku Postgres database](https://www.heroku.com/postgres) is used by both Terraform and Kong to persist their configuration and state.
+
