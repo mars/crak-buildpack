@@ -1,6 +1,10 @@
 Heroku Buildpack for create-react-app with Kong gateway
 =======================================================
 
+⛔️ This is an old experiment, now archived. Feel free to reference it, but it is very outdated and probably full of issues.
+
+-----
+
 ⭐️ A new version of [create-react-app-buildpack](https://github.com/mars/create-react-app-buildpack) that replaces the basic Nginx server with a [Kong gateway](https://konghq.com/) to support sophisticated access control, backend proxies, and more.
 
 Deploy React.js web apps generated with [create-react-app](https://github.com/facebook/create-react-app). Automates deployment with the built-in bundler and serves it up via [Kong](https://konghq.com/), which is fundamentally the [Nginx](http://nginx.org/en/) web server.
