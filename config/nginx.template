@@ -30,6 +30,7 @@ http {
     server {
         server_name create-react-app;
         listen 127.0.0.1:3000;
+        client_max_body_size 50m;
 
         # -------------------------------------------------------------------------
         # Serve create-react-app production build
@@ -39,7 +40,7 @@ http {
         #
         location / {
             root /app/build;
-            include nginx/conf/mime.types;
+            include nginx/conf/mime.types;            
             default_type application/octet-stream;
             sendfile on;
 
